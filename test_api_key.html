@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Google Maps API</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        #map {
+            height: 400px;
+            width: 100%;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teste da API Key do Google Maps</h1>
+    <p><strong>API Key:</strong> AIzaSyA7tIh-knvRT2RZD9F8ZqZOmuBBnZjc9Qk</p>
+    
+    <div id="status"></div>
+    <div id="map"></div>
+    
+    <script>
+        function initMap() {
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                // Criar mapa centrado em São Paulo
+                const map = new google.maps.Map(document.getElementById('map'), {
+                    zoom: 13,
+                    center: { lat: -23.5505, lng: -46.6333 }
+                });
+                
+                // Adicionar marcador
+                new google.maps.Marker({
+                    position: { lat: -23.5505, lng: -46.6333 },
+                    map: map,
+                    title: 'São Paulo'
+                });
+                
+                statusDiv.innerHTML = '<div class="success">✅ API Key funcionando corretamente!</div>';
+                
+            } catch (error) {
+                statusDiv.innerHTML = '<div class="error">❌ Erro: ' + error.message + '</div>';
+            }
+        }
+        
+        function handleApiError() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<div class="error">❌ Erro ao carregar a API do Google Maps. Verifique sua API key.</div>';
+        }
+        
+        // Detectar erros de autenticação
+        window.gm_authFailure = function() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<div class="error">❌ Falha de autenticação. API key inválida ou restrita.</div>';
+        };
+    </script>
+    
+    <!-- Carregar API do Google Maps -->
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA7tIh-knvRT2RZD9F8ZqZOmuBBnZjc9Qk&callback=initMap&onerror=handleApiError">
+    </script>
+</body>
+</html>

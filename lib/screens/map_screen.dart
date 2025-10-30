@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/geofence_area.dart';
 import '../services/geofence_service.dart';
 import '../services/location_service.dart';
-import '../widgets/geofence_map_layer.dart';
 import 'geofence_list_screen.dart';
 
 class MapScreen extends StatefulWidget {
@@ -15,7 +13,7 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
   final GeofenceService _geofenceService = GeofenceService();
   final LocationService _locationService = LocationService();
 
@@ -26,6 +24,10 @@ class _MapScreenState extends State<MapScreen> {
   String _currentColor = '#FF2196F3';
   double _circleRadius = 100.0;
   LatLng? _currentLocation;
+
+  Set<Marker> _markers = {};
+  Set<Polygon> _polygons = {};
+  Set<Circle> _circles = {};
 
   @override
   void initState() {
@@ -39,6 +41,7 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _geofenceAreas = areas;
     });
+    _updateMapElements();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -47,11 +50,17 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _currentLocation = location;
       });
-      _mapController.move(location, 15.0);
+      if (_mapController != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: location, zoom: 15.0),
+          ),
+        );
+      }
     }
   }
 
-  void _onMapTap(TapPosition tapPosition, LatLng position) {
+  void _onMapTap(LatLng position) {
     if (!_isDrawing) return;
 
     setState(() {
@@ -61,6 +70,179 @@ class _MapScreenState extends State<MapScreen> {
         _drawingPoints.add(position);
       }
     });
+    _updateDrawingMarkers();
+  }
+
+  void _updateDrawingMarkers() {
+    Set<Marker> drawingMarkers = {};
+
+    for (int i = 0; i < _drawingPoints.length; i++) {
+      drawingMarkers.add(
+        Marker(
+          markerId: MarkerId('drawing_point_$i'),
+          position: _drawingPoints[i],
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            _currentDrawingType == GeofenceType.circle
+                ? BitmapDescriptor.hueRed
+                : BitmapDescriptor.hueBlue,
+          ),
+          infoWindow: InfoWindow(
+            title: _currentDrawingType == GeofenceType.circle
+                ? 'Centro do Círculo'
+                : 'Ponto ${i + 1}',
+          ),
+        ),
+      );
+    }
+
+    // Adicionar círculo temporário se estiver desenhando círculo
+    Set<Circle> drawingCircles = {};
+    if (_currentDrawingType == GeofenceType.circle &&
+        _drawingPoints.isNotEmpty) {
+      drawingCircles.add(
+        Circle(
+          circleId: const CircleId('drawing_circle'),
+          center: _drawingPoints.first,
+          radius: _circleRadius,
+          fillColor: _parseColor(_currentColor).withValues(alpha: 0.3),
+          strokeColor: _parseColor(_currentColor),
+          strokeWidth: 2,
+        ),
+      );
+    }
+
+    // Adicionar polígono temporário se estiver desenhando polígono
+    Set<Polygon> drawingPolygons = {};
+    if (_currentDrawingType == GeofenceType.polygon &&
+        _drawingPoints.length >= 3) {
+      drawingPolygons.add(
+        Polygon(
+          polygonId: const PolygonId('drawing_polygon'),
+          points: _drawingPoints,
+          fillColor: _parseColor(_currentColor).withValues(alpha: 0.3),
+          strokeColor: _parseColor(_currentColor),
+          strokeWidth: 2,
+        ),
+      );
+    }
+
+    setState(() {
+      // Combinar marcadores existentes com os de desenho
+      _markers = Set.from(
+          _markers.where((m) => !m.markerId.value.startsWith('drawing_')))
+        ..addAll(drawingMarkers);
+      _circles =
+          Set.from(_circles.where((c) => c.circleId.value != 'drawing_circle'))
+            ..addAll(drawingCircles);
+      _polygons = Set.from(
+          _polygons.where((p) => p.polygonId.value != 'drawing_polygon'))
+        ..addAll(drawingPolygons);
+    });
+  }
+
+  void _updateMapElements() {
+    Set<Marker> newMarkers = {};
+    Set<Circle> newCircles = {};
+    Set<Polygon> newPolygons = {};
+
+    // Adicionar marcador da localização atual
+    if (_currentLocation != null) {
+      newMarkers.add(
+        Marker(
+          markerId: const MarkerId('current_location'),
+          position: _currentLocation!,
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          infoWindow: const InfoWindow(title: 'Sua Localização'),
+        ),
+      );
+    }
+
+    // Adicionar elementos das áreas geofence
+    for (final area in _geofenceAreas) {
+      final color = _parseColor(area.color);
+      final isActive = area.isActive;
+
+      if (area.type == GeofenceType.circle) {
+        // Adicionar círculo
+        newCircles.add(
+          Circle(
+            circleId: CircleId(area.id),
+            center: area.coordinates.first,
+            radius: area.radius ?? 100,
+            fillColor: isActive
+                ? color.withValues(alpha: 0.3)
+                : Colors.grey.withValues(alpha: 0.2),
+            strokeColor: isActive ? color : Colors.grey,
+            strokeWidth: 2,
+          ),
+        );
+
+        // Adicionar marcador no centro
+        newMarkers.add(
+          Marker(
+            markerId: MarkerId('center_${area.id}'),
+            position: area.coordinates.first,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              isActive ? BitmapDescriptor.hueRed : BitmapDescriptor.hueViolet,
+            ),
+            infoWindow: InfoWindow(
+              title: area.name,
+              snippet: 'Raio: ${area.radius?.toInt()}m',
+            ),
+            onTap: () => _onAreaTap(area),
+          ),
+        );
+      } else {
+        // Adicionar polígono
+        newPolygons.add(
+          Polygon(
+            polygonId: PolygonId(area.id),
+            points: area.coordinates,
+            fillColor: isActive
+                ? color.withValues(alpha: 0.3)
+                : Colors.grey.withValues(alpha: 0.2),
+            strokeColor: isActive ? color : Colors.grey,
+            strokeWidth: 2,
+          ),
+        );
+
+        // Adicionar marcador no centro do polígono
+        final center = _calculatePolygonCenter(area.coordinates);
+        newMarkers.add(
+          Marker(
+            markerId: MarkerId('center_${area.id}'),
+            position: center,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              isActive ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueViolet,
+            ),
+            infoWindow: InfoWindow(
+              title: area.name,
+              snippet: '${area.coordinates.length} pontos',
+            ),
+            onTap: () => _onAreaTap(area),
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      _markers = newMarkers;
+      _circles = newCircles;
+      _polygons = newPolygons;
+    });
+  }
+
+  LatLng _calculatePolygonCenter(List<LatLng> points) {
+    double lat = 0;
+    double lng = 0;
+
+    for (final point in points) {
+      lat += point.latitude;
+      lng += point.longitude;
+    }
+
+    return LatLng(lat / points.length, lng / points.length);
   }
 
   void _startDrawing(GeofenceType type) {
@@ -69,6 +251,7 @@ class _MapScreenState extends State<MapScreen> {
       _isDrawing = true;
       _drawingPoints.clear();
     });
+    _updateDrawingMarkers();
   }
 
   void _cancelDrawing() {
@@ -76,6 +259,7 @@ class _MapScreenState extends State<MapScreen> {
       _isDrawing = false;
       _drawingPoints.clear();
     });
+    _updateMapElements(); // Remove elementos de desenho
   }
 
   Future<void> _finishDrawing() async {
@@ -124,8 +308,10 @@ class _MapScreenState extends State<MapScreen> {
                   divisions: 99,
                   label: '${_circleRadius.toInt()}m',
                   onChanged: (value) {
-                    // Apenas atualiza localmente, não precisa de setState aqui
-                    _circleRadius = value;
+                    setState(() {
+                      _circleRadius = value;
+                    });
+                    _updateDrawingMarkers(); // Atualiza o círculo em tempo real
                   },
                 ),
                 const SizedBox(height: 16),
@@ -138,7 +324,10 @@ class _MapScreenState extends State<MapScreen> {
                     onTap: () async {
                       final color = await _showSimpleColorPicker();
                       if (color != null) {
-                        _currentColor = color;
+                        setState(() {
+                          _currentColor = color;
+                        });
+                        _updateDrawingMarkers(); // Atualiza a cor em tempo real
                       }
                     },
                     child: Container(
@@ -343,6 +532,14 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  Color _parseColor(String colorString) {
+    try {
+      return Color(int.parse(colorString.replaceFirst('#', '0xFF')));
+    } catch (e) {
+      return Colors.blue;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -369,53 +566,29 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter:
-                  _currentLocation ?? const LatLng(-23.5505, -46.6333),
-              initialZoom: 15.0,
-              onTap: _onMapTap,
+          GoogleMap(
+            onMapCreated: (GoogleMapController controller) {
+              _mapController = controller;
+              if (_currentLocation != null) {
+                controller.animateCamera(
+                  CameraUpdate.newCameraPosition(
+                    CameraPosition(target: _currentLocation!, zoom: 15.0),
+                  ),
+                );
+              }
+            },
+            initialCameraPosition: CameraPosition(
+              target: _currentLocation ?? const LatLng(-23.5505, -46.6333),
+              zoom: 15.0,
             ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c'],
-              ),
-              GeofenceMapLayer(
-                geofenceAreas: _geofenceAreas,
-                onAreaTap: _onAreaTap,
-              ),
-              if (_isDrawing)
-                DrawingLayer(
-                  points: _drawingPoints,
-                  drawingType: _currentDrawingType,
-                  color: _currentColor,
-                  radius: _circleRadius,
-                ),
-              if (_currentLocation != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _currentLocation!,
-                      width: 30,
-                      height: 30,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.my_location,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-            ],
+            onTap: _onMapTap,
+            markers: _markers,
+            polygons: _polygons,
+            circles: _circles,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false, // Usaremos nosso próprio botão
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
           ),
           if (_isDrawing)
             Positioned(

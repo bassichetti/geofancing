@@ -35,9 +35,8 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   
-  # Mapa
-  flutter_map: ^7.0.2
-  latlong2: ^0.9.1
+  # Mapa Google
+  google_maps_flutter: ^2.9.0
   
   # Localização
   location: ^6.0.2
@@ -46,8 +45,7 @@ dependencies:
   # Permissões
   permission_handler: ^11.3.1
   
-  # Interface
-  flutter_colorpicker: ^1.1.0
+  # Interface - removido flutter_colorpicker (não usado)
   
   # Storage
   shared_preferences: ^2.3.2
