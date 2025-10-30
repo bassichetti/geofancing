@@ -1,0 +1,96 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "1698765432100",
+        "name": "Casa",
+        "type": "circle",
+        "radius": 150,
+        "color": "#FF2196F3",
+        "createdAt": "2024-10-30T10:30:00.000Z",
+        "isActive": true
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-46.6333, -23.5505]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "1698765432101",
+        "name": "Escritório",
+        "type": "polygon",
+        "color": "#FF4CAF50",
+        "createdAt": "2024-10-30T11:15:00.000Z",
+        "isActive": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-46.6320, -23.5490],
+          [-46.6315, -23.5490],
+          [-46.6315, -23.5485],
+          [-46.6320, -23.5485],
+          [-46.6320, -23.5490]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "1698765432102",
+        "name": "Supermercado",
+        "type": "circle",
+        "radius": 200,
+        "color": "#FFFF9800",
+        "createdAt": "2024-10-30T14:45:00.000Z",
+        "isActive": true
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-46.6350, -23.5520]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "1698765432103",
+        "name": "Parque",
+        "type": "polygon",
+        "color": "#FF9C27B0",
+        "createdAt": "2024-10-30T16:20:00.000Z",
+        "isActive": false
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-46.6380, -23.5540],
+          [-46.6375, -23.5540],
+          [-46.6370, -23.5535],
+          [-46.6375, -23.5530],
+          [-46.6380, -23.5535],
+          [-46.6380, -23.5540]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "1698765432104",
+        "name": "Academia",
+        "type": "circle",
+        "radius": 100,
+        "color": "#FFF44336",
+        "createdAt": "2024-10-30T18:10:00.000Z",
+        "isActive": true
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-46.6300, -23.5470]
+      }
+    }
+  ]
+}
