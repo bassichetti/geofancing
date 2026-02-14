@@ -21,6 +21,7 @@ class _MapScreenState extends State<MapScreen> {
   List<LatLng> _drawingPoints = [];
   GeofenceType _currentDrawingType = GeofenceType.polygon;
   bool _isDrawing = false;
+  bool _justStartedDrawing = false;
   String _currentColor = '#FF2196F3';
   double _circleRadius = 100.0;
   LatLng? _currentLocation;
@@ -63,13 +64,22 @@ class _MapScreenState extends State<MapScreen> {
   void _onMapTap(LatLng position) {
     if (!_isDrawing) return;
 
-    setState(() {
-      if (_currentDrawingType == GeofenceType.circle) {
+    // Ignora o primeiro toque logo após iniciar desenho (evita capturar clique do botão)
+    if (_justStartedDrawing) {
+      _justStartedDrawing = false;
+      return;
+    }
+
+    if (_currentDrawingType == GeofenceType.circle) {
+      if (_drawingPoints.isEmpty) {
         _drawingPoints = [position];
       } else {
-        _drawingPoints.add(position);
+        _drawingPoints[0] = position;
       }
-    });
+    } else {
+      _drawingPoints.add(position);
+    }
+
     _updateDrawingMarkers();
   }
 
@@ -245,13 +255,33 @@ class _MapScreenState extends State<MapScreen> {
     return LatLng(lat / points.length, lng / points.length);
   }
 
-  void _startDrawing(GeofenceType type) {
+  void _beginDrawing(GeofenceType type) {
     setState(() {
       _currentDrawingType = type;
       _isDrawing = true;
       _drawingPoints.clear();
+      _justStartedDrawing = true;
     });
-    _updateDrawingMarkers();
+
+    // Remove a flag após um pequeno delay para evitar capturar o clique do botão
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _justStartedDrawing = false;
+        });
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          type == GeofenceType.circle
+              ? 'Toque no mapa para definir o centro do círculo'
+              : 'Toque no mapa para adicionar pontos do polígono',
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _cancelDrawing() {
@@ -259,7 +289,13 @@ class _MapScreenState extends State<MapScreen> {
       _isDrawing = false;
       _drawingPoints.clear();
     });
-    _updateMapElements(); // Remove elementos de desenho
+    // Remove explicitamente todos os elementos de desenho temporários
+    setState(() {
+      _markers.removeWhere((m) => m.markerId.value.startsWith('drawing_'));
+      _circles.removeWhere((c) => c.circleId.value == 'drawing_circle');
+      _polygons.removeWhere((p) => p.polygonId.value == 'drawing_polygon');
+    });
+    _updateMapElements(); // Reconstrói elementos do mapa
   }
 
   Future<void> _finishDrawing() async {
@@ -274,6 +310,11 @@ class _MapScreenState extends State<MapScreen> {
       );
       return;
     }
+
+    // Desativa o modo de desenho antes de abrir o diálogo
+    setState(() {
+      _isDrawing = false;
+    });
 
     await _showNameDialog();
   }
@@ -540,6 +581,133 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Widget _buildDrawingDrawer(BuildContext context) {
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text(
+              'Ferramentas de desenho',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                _beginDrawing(GeofenceType.circle);
+                Navigator.pop(context);
+              },
+              icon: const Icon(Icons.radio_button_unchecked),
+              label: const Text('Desenhar Círculo'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: () {
+                _beginDrawing(GeofenceType.polygon);
+                Navigator.pop(context);
+              },
+              icon: const Icon(Icons.pentagon_outlined),
+              label: const Text('Desenhar Polígono'),
+            ),
+            const Divider(height: 32),
+            if (_isDrawing) ...[
+              Text(
+                _currentDrawingType == GeofenceType.circle
+                    ? 'Toque no mapa para definir o centro do círculo'
+                    : 'Toque no mapa para adicionar pontos do polígono',
+              ),
+              const SizedBox(height: 8),
+              Text('Pontos: ${_drawingPoints.length}'),
+              const SizedBox(height: 12),
+              if (_currentDrawingType == GeofenceType.circle) ...[
+                Text('Raio: ${_circleRadius.toInt()}m'),
+                Slider(
+                  value: _circleRadius,
+                  min: 10,
+                  max: 1000,
+                  divisions: 99,
+                  label: '${_circleRadius.toInt()}m',
+                  onChanged: (value) {
+                    setState(() {
+                      _circleRadius = value;
+                    });
+                    _updateDrawingMarkers();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+              Row(
+                children: [
+                  const Text('Cor: '),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () async {
+                      final color = await _showSimpleColorPicker();
+                      if (color != null) {
+                        setState(() {
+                          _currentColor = color;
+                        });
+                        _updateDrawingMarkers();
+                      }
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Color(
+                          int.parse(_currentColor.replaceFirst('#', '0xFF')),
+                        ),
+                        border: Border.all(color: Colors.grey, width: 2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.palette,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _drawingPoints.isEmpty ? null : _finishDrawing,
+                      icon: const Icon(Icons.check),
+                      label: const Text('Finalizar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _cancelDrawing,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.close),
+                      label: const Text('Cancelar'),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const Text(
+                'Selecione uma ferramenta acima para iniciar o desenho.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -564,6 +732,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
+      drawer: _buildDrawingDrawer(context),
       body: Stack(
         children: [
           GoogleMap(
@@ -590,72 +759,13 @@ class _MapScreenState extends State<MapScreen> {
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
           ),
-          if (_isDrawing)
-            Positioned(
-              top: 16,
-              left: 16,
-              right: 16,
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _currentDrawingType == GeofenceType.circle
-                            ? 'Toque no mapa para definir o centro do círculo'
-                            : 'Toque no mapa para adicionar pontos do polígono',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton(
-                            onPressed: _cancelDrawing,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            child: const Text('Cancelar'),
-                          ),
-                          ElevatedButton(
-                            onPressed:
-                                _drawingPoints.isEmpty ? null : _finishDrawing,
-                            child: const Text('Finalizar'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
-      floatingActionButton: _isDrawing
-          ? null
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                FloatingActionButton(
-                  heroTag: 'circle',
-                  onPressed: () => _startDrawing(GeofenceType.circle),
-                  child: const Icon(Icons.radio_button_unchecked),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton(
-                  heroTag: 'polygon',
-                  onPressed: () => _startDrawing(GeofenceType.polygon),
-                  child: const Icon(Icons.pentagon_outlined),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton(
-                  heroTag: 'location',
-                  onPressed: _getCurrentLocation,
-                  child: const Icon(Icons.my_location),
-                ),
-              ],
-            ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'location',
+        onPressed: _getCurrentLocation,
+        child: const Icon(Icons.my_location),
+      ),
     );
   }
 }
